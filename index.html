@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canes Shot Heatmap</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #CC0000;
+    --red-bright: #FF1A1A;
+    --red-dim: #880000;
+    --black: #0A0A0A;
+    --surface: #111111;
+    --surface2: #1A1A1A;
+    --surface3: #222222;
+    --border: #2A2A2A;
+    --text: #F0F0F0;
+    --text-dim: #888888;
+    --ice: #C8E8F5;
+    --ice-dark: #A0C8E0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--black);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.3;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #150000 0%, transparent 100%);
+  }
+
+  .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .canes-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .title-block h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 28px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .title-block span {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--red);
+    font-weight: 600;
+  }
+
+  .season-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .season-selector label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    border-radius: 3px;
+    cursor: pointer;
+    appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+
+  select:focus { outline: none; border-color: var(--red); }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 0;
+    height: calc(100vh - 89px);
+  }
+
+  .rink-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    position: relative;
+  }
+
+  .shot-type-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .tab {
+    padding: 8px 20px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    border: none;
+    border-right: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+
+  .tab:last-child { border-right: none; }
+  .tab:hover { background: var(--surface3); color: var(--text); }
+  .tab.active { background: var(--red); color: white; font-weight: 700; }
+
+  .rink-container {
+    position: relative;
+    width: 100%;
+    max-width: 680px;
+  }
+
+  #rinkSVG {
+    width: 100%;
+    border-radius: 6px;
+    filter: drop-shadow(0 0 40px rgba(204,0,0,0.15));
+  }
+
+  .status-bar {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    font-family: 'Barlow Condensed', sans-serif;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Sidebar */
+  .sidebar {
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 14px;
+    font-weight: 600;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+  }
+
+  .stat-card .val {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-card .lbl {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  /* Zone breakdown */
+  .zone-bars { display: flex; flex-direction: column; gap: 8px; }
+
+  .zone-row { display: flex; flex-direction: column; gap: 4px; }
+
+  .zone-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+
+  .zone-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .zone-pct {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .zone-track {
+    height: 4px;
+    background: var(--surface3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .zone-fill {
+    height: 100%;
+    background: var(--red);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .legend-gradient {
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(90deg, transparent 0%, rgba(0,100,255,0.3) 20%, rgba(0,200,100,0.5) 40%, rgba(255,200,0,0.7) 65%, rgba(255,50,0,0.9) 85%, #FF0000 100%);
+    margin-bottom: 4px;
+  }
+
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Loading state */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,10,10,0.8);
+    gap: 16px;
+    border-radius: 6px;
+    z-index: 10;
+  }
+
+  .loading-spinner {
+    width: 40px; height: 40px;
+    border: 2px solid var(--border);
+    border-top-color: var(--red);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .error-msg {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--red);
+    text-align: center;
+    padding: 12px;
+  }
+
+  .tooltip {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 999;
+    display: none;
+    color: var(--text);
+  }
+
+  /* Scrollbar */
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: var(--surface); }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-area">
+    <svg class="canes-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="48" fill="#CC0000" stroke="#000" stroke-width="2"/>
+      <text x="50" y="42" text-anchor="middle" fill="white" font-family="Barlow Condensed, sans-serif" font-weight="900" font-size="14" letter-spacing="1">CAROLINA</text>
+      <text x="50" y="60" text-anchor="middle" fill="white" font-family="Barlow Condensed, sans-serif" font-weight="900" font-size="22" letter-spacing="2">HC</text>
+      <text x="50" y="74" text-anchor="middle" fill="white" font-family="Barlow Condensed, sans-serif" font-weight="700" font-size="11">HURRICANES</text>
+    </svg>
+    <div class="title-block">
+      <span>Shot Analytics</span>
+      <h1>Shot Heatmap</h1>
+    </div>
+  </div>
+  <div class="season-selector">
+    <label>Season</label>
+    <select id="seasonSelect">
+      <option value="20242025">2024–25</option>
+      <option value="20232024">2023–24</option>
+      <option value="20222023">2022–23</option>
+      <option value="20212022">2021–22</option>
+    </select>
+  </div>
+</header>
+
+<div class="main">
+  <div class="rink-panel">
+    <div class="shot-type-tabs">
+      <button class="tab active" data-type="all">All Shots</button>
+      <button class="tab" data-type="SOG">Shots on Goal</button>
+      <button class="tab" data-type="GOAL">Goals</button>
+      <button class="tab" data-type="MISS">Missed (Corsi)</button>
+    </div>
+
+    <div class="rink-container">
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Fetching shot data...</div>
+      </div>
+      <svg id="rinkSVG" viewBox="0 0 600 260" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span id="statusText">Loading...</span>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Season Summary</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="val" id="statTotal">—</div><div class="lbl">Total Shots</div></div>
+        <div class="stat-card"><div class="val" id="statGoals">—</div><div class="lbl">Goals</div></div>
+        <div class="stat-card"><div class="val" id="statSog">—</div><div class="lbl">On Goal</div></div>
+        <div class="stat-card"><div class="val" id="statPct">—</div><div class="lbl">Sh%</div></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Zone Breakdown</div>
+      <div class="zone-bars" id="zoneBars">
+        <div class="zone-row">
+          <div class="zone-meta"><span class="zone-name">Slot</span><span class="zone-pct" id="zSlot">—</span></div>
+          <div class="zone-track"><div class="zone-fill" id="zSlotBar" style="width:0%"></div></div>
+        </div>
+        <div class="zone-row">
+          <div class="zone-meta"><span class="zone-name">Left Circle</span><span class="zone-pct" id="zLeft">—</span></div>
+          <div class="zone-track"><div class="zone-fill" id="zLeftBar" style="width:0%"></div></div>
+        </div>
+        <div class="zone-row">
+          <div class="zone-meta"><span class="zone-name">Right Circle</span><span class="zone-pct" id="zRight">—</span></div>
+          <div class="zone-track"><div class="zone-fill" id="zRightBar" style="width:0%"></div></div>
+        </div>
+        <div class="zone-row">
+          <div class="zone-meta"><span class="zone-name">High Slot</span><span class="zone-pct" id="zHigh">—</span></div>
+          <div class="zone-track"><div class="zone-fill" id="zHighBar" style="width:0%"></div></div>
+        </div>
+        <div class="zone-row">
+          <div class="zone-meta"><span class="zone-name">Perimeter</span><span class="zone-pct" id="zPerim">—</span></div>
+          <div class="zone-track"><div class="zone-fill" id="zPerimBar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Heatmap Scale</div>
+      <div class="legend-gradient"></div>
+      <div class="legend-labels">
+        <span>Low</span><span>Medium</span><span>High</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Note</div>
+      <p style="font-size:11px; color: var(--text-dim); line-height:1.6;">
+        Shot coordinates pulled from the NHL Stats API. Heatmap uses kernel density estimation. All shots normalized to attacking right (offensive zone on right half).
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const CANES_ID = 12;
+const RINK_W = 600, RINK_H = 260;
+// NHL rink is 200ft x 85ft. We show the offensive half (100ft) normalized to right side.
+// Scale: x pixels per foot
+const SCALE_X = RINK_W / 200;
+const SCALE_Y = RINK_H / 85;
+
+let allShots = [];
+let currentType = 'all';
+
+// ─── Rink Drawing ───────────────────────────────────────────────────────────
+function drawRink(svg) {
+  svg.innerHTML = '';
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    Object.entries(attrs).forEach(([k,v]) => e.setAttribute(k, v));
+    return e;
+  };
+
+  // Ice surface
+  svg.appendChild(el('rect', { x:0, y:0, width:RINK_W, height:RINK_H, rx:18, ry:18, fill:'#B8DCF0', stroke:'#5A9ABF', 'stroke-width':'2' }));
+
+  // Center line
+  svg.appendChild(el('line', { x1:RINK_W/2, y1:0, x2:RINK_W/2, y2:RINK_H, stroke:'#E8272A', 'stroke-width':'3' }));
+
+  // Blue lines
+  [RINK_W * 0.25, RINK_W * 0.75].forEach(x => {
+    svg.appendChild(el('line', { x1:x, y1:0, x2:x, y2:RINK_H, stroke:'#1565C0', 'stroke-width':'4' }));
+  });
+
+  // Goal creases
+  [20, RINK_W-20].forEach((cx, i) => {
+    const crease = el('path', {
+      d: i === 0
+        ? `M ${cx} ${RINK_H/2-18} Q ${cx+22} ${RINK_H/2-18} ${cx+22} ${RINK_H/2} Q ${cx+22} ${RINK_H/2+18} ${cx} ${RINK_H/2+18} Z`
+        : `M ${cx} ${RINK_H/2-18} Q ${cx-22} ${RINK_H/2-18} ${cx-22} ${RINK_H/2} Q ${cx-22} ${RINK_H/2+18} ${cx} ${RINK_H/2+18} Z`,
+      fill: 'rgba(200,220,240,0.6)', stroke:'#1565C0', 'stroke-width':'1.5'
+    });
+    svg.appendChild(crease);
+
+    // Goal line
+    svg.appendChild(el('line', { x1:cx, y1:RINK_H/2-24, x2:cx, y2:RINK_H/2+24, stroke:'#E8272A', 'stroke-width':'2' }));
+  });
+
+  // Face-off circles
+  const faceoffCircles = [
+    [RINK_W*0.18, RINK_H*0.25], [RINK_W*0.18, RINK_H*0.75],
+    [RINK_W*0.82, RINK_H*0.25], [RINK_W*0.82, RINK_H*0.75],
+  ];
+  faceoffCircles.forEach(([cx, cy]) => {
+    svg.appendChild(el('circle', { cx, cy, r:28, fill:'none', stroke:'#E8272A', 'stroke-width':'1.5', opacity:'0.7' }));
+    svg.appendChild(el('circle', { cx, cy, r:2, fill:'#E8272A' }));
+  });
+
+  // Center circle
+  svg.appendChild(el('circle', { cx:RINK_W/2, cy:RINK_H/2, r:34, fill:'none', stroke:'#1565C0', 'stroke-width':'2' }));
+  svg.appendChild(el('circle', { cx:RINK_W/2, cy:RINK_H/2, r:2, fill:'#1565C0' }));
+
+  // Heatmap layer (will be added dynamically)
+  const heatLayer = el('g', { id:'heatLayer' });
+  svg.appendChild(heatLayer);
+
+  // Shot dots layer
+  const dotsLayer = el('g', { id:'dotsLayer' });
+  svg.appendChild(dotsLayer);
+
+  // Corner rounding mask
+  const mask = el('rect', { x:0, y:0, width:RINK_W, height:RINK_H, rx:18, ry:18, fill:'none', stroke:'#5A9ABF', 'stroke-width':'3' });
+  svg.appendChild(mask);
+
+  // Label
+  const label = el('text', { x: RINK_W*0.78, y: 14, fill:'#1565C0', 'font-family':'Barlow Condensed', 'font-size':'10', 'letter-spacing':'2', 'text-transform':'uppercase', opacity:'0.7' });
+  label.textContent = 'OFFENSIVE ZONE →';
+  svg.appendChild(label);
+}
+
+// ─── Coordinate conversion ───────────────────────────────────────────────────
+// NHL API: x ∈ [-100,100], y ∈ [-42.5, 42.5]
+// We normalize so Canes always attack right (x > 0)
+function toSVG(x, y, teamShootingRight) {
+  // If the team was attacking left, flip x
+  const nx = teamShootingRight ? x : -x;
+  const ny = teamShootingRight ? y : -y;
+
+  const svgX = (nx + 100) * SCALE_X;
+  const svgY = (ny + 42.5) * SCALE_Y;
+  return [svgX, svgY];
+}
+
+
+// --- Fetch via our Vercel proxy (no CORS issues, no API key needed) ----------
+// The proxy lives at /api/nhl?path=<NHL_API_PATH>
+// In development you can set PROXY_BASE to a localhost:3000 URL.
+const PROXY_BASE = '';  // empty = same origin (works on Vercel + GitHub Pages w/ Vercel)
+
+async function fetchNHL(nhlPath) {
+  const url = `${PROXY_BASE}/api/nhl?path=${encodeURIComponent(nhlPath)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Proxy returned ${res.status}`);
+  }
+  return res.json();
+}
+
+async function fetchSeasonGames(season) {
+  const data = await fetchNHL(`/v1/club-schedule-season/CAR/${season}`);
+  return data.games || [];
+}
+
+async function fetchGameShots(gameId) {
+  let data;
+  try {
+    data = await fetchNHL(`/v1/gamecenter/${gameId}/play-by-play`);
+  } catch(e) { return []; }
+  if (!data) return [];
+  const grid = new Float32Array(cols * rows);
+  const BW = 28; // bandwidth
+
+  for (const shot of shots) {
+    const gx = Math.floor(shot.x / CELL);
+    const gy = Math.floor(shot.y / CELL);
+    const r = Math.ceil(BW / CELL) + 1;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = gx + dx, ny = gy + dy;
+        if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
+        const dist = Math.sqrt((dx*CELL)**2 + (dy*CELL)**2);
+        if (dist > BW) continue;
+        const w = Math.exp(-(dist*dist)/(2*BW*BW/4));
+        grid[ny * cols + nx] += w;
+      }
+    }
+  }
+
+  const max = Math.max(...grid);
+  if (max === 0) return;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const v = grid[row * cols + col] / max;
+      if (v < 0.02) continue;
+      // Only show in offensive zone (right half)
+      const cx = col * CELL + CELL/2;
+      if (cx < RINK_W / 2) continue;
+
+      const color = heatColor(v);
+      const rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('x', col * CELL);
+      rect.setAttribute('y', row * CELL);
+      rect.setAttribute('width', CELL);
+      rect.setAttribute('height', CELL);
+      rect.setAttribute('fill', color);
+      rect.setAttribute('opacity', Math.min(v * 0.85, 0.82).toFixed(2));
+      heatLayer.appendChild(rect);
+    }
+  }
+}
+
+function heatColor(t) {
+  // Cool (blue) → green → yellow → red
+  const stops = [
+    [0,   [0,   80, 220]],
+    [0.25,[0,  180, 100]],
+    [0.55,[230, 190,  0]],
+    [0.80,[255,  60,  0]],
+    [1.0, [255,   0,  0]],
+  ];
+  let i = 0;
+  while (i < stops.length-2 && t > stops[i+1][0]) i++;
+  const [t0, c0] = stops[i];
+  const [t1, c1] = stops[i+1];
+  const f = (t - t0) / (t1 - t0);
+  const r = Math.round(c0[0] + f*(c1[0]-c0[0]));
+  const g = Math.round(c0[1] + f*(c1[1]-c0[1]));
+  const b = Math.round(c0[2] + f*(c1[2]-c0[2]));
+  return `rgb(${r},${g},${b})`;
+}
+
+// ─── Shot dots ───────────────────────────────────────────────────────────────
+function drawDots(shots, svg) {
+  const layer = svg.querySelector('#dotsLayer');
+  layer.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const colors = { 'goal':'#FFD700', 'shot-on-goal':'rgba(255,255,255,0.5)', 'missed-shot':'rgba(180,180,255,0.35)', 'blocked-shot':'rgba(180,180,180,0.3)' };
+
+  for (const s of shots) {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', s.x);
+    c.setAttribute('cy', s.y);
+    c.setAttribute('r', s.type === 'goal' ? 4 : 2.5);
+    c.setAttribute('fill', colors[s.type] || 'rgba(255,255,255,0.4)');
+    c.setAttribute('stroke', s.type === 'goal' ? '#CC8800' : 'none');
+    c.setAttribute('stroke-width', '1');
+    c.setAttribute('class', 'shot-dot');
+    c.setAttribute('data-type', s.type);
+    layer.appendChild(c);
+  }
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+function updateStats(shots) {
+  const total = shots.length;
+  const goals = shots.filter(s => s.type === 'goal').length;
+  const sog = shots.filter(s => s.type === 'shot-on-goal' || s.type === 'goal').length;
+  const pct = sog > 0 ? ((goals/sog)*100).toFixed(1) : '0.0';
+
+  document.getElementById('statTotal').textContent = total.toLocaleString();
+  document.getElementById('statGoals').textContent = goals.toLocaleString();
+  document.getElementById('statSog').textContent = sog.toLocaleString();
+  document.getElementById('statPct').textContent = pct + '%';
+
+  // Zone breakdown (based on x/y position)
+  const zones = { slot:0, left:0, right:0, high:0, perim:0 };
+  for (const s of shots) {
+    // Re-map from SVG coords back to approx rink coords
+    const rx = (s.x / SCALE_X) - 100;
+    const ry = (s.y / SCALE_Y) - 42.5;
+    if (rx > 69) { // Behind goal line
+      zones.perim++;
+    } else if (Math.abs(ry) < 12 && rx > 40) {
+      zones.slot++;
+    } else if (ry < -8 && rx > 25) {
+      zones.left++;
+    } else if (ry > 8 && rx > 25) {
+      zones.right++;
+    } else if (Math.abs(ry) < 20 && rx > 20 && rx <= 40) {
+      zones.high++;
+    } else {
+      zones.perim++;
+    }
+  }
+
+  const setZone = (id, barId, count) => {
+    const pct = total > 0 ? Math.round(count/total*100) : 0;
+    document.getElementById(id).textContent = pct + '%';
+    document.getElementById(barId).style.width = pct + '%';
+  };
+
+  setZone('zSlot', 'zSlotBar', zones.slot);
+  setZone('zLeft', 'zLeftBar', zones.left);
+  setZone('zRight', 'zRightBar', zones.right);
+  setZone('zHigh', 'zHighBar', zones.high);
+  setZone('zPerim', 'zPerimBar', zones.perim);
+}
+
+// ─── Filter and render ───────────────────────────────────────────────────────
+function renderShots() {
+  const svg = document.getElementById('rinkSVG');
+  let filtered = allShots;
+
+  if (currentType === 'SOG') {
+    filtered = allShots.filter(s => s.type === 'shot-on-goal' || s.type === 'goal');
+  } else if (currentType === 'GOAL') {
+    filtered = allShots.filter(s => s.type === 'goal');
+  } else if (currentType === 'MISS') {
+    filtered = allShots.filter(s => s.type === 'missed-shot' || s.type === 'blocked-shot');
+  }
+
+  buildHeatmap(filtered, svg);
+  drawDots(filtered, svg);
+  updateStats(filtered);
+  document.getElementById('statusText').textContent =
+    `${filtered.length.toLocaleString()} shots plotted — ${allShots.length.toLocaleString()} total this season`;
+}
+
+// ─── Load data ───────────────────────────────────────────────────────────────
+async function loadData(season) {
+  const overlay = document.getElementById('loadingOverlay');
+  const statusText = document.getElementById('statusText');
+  overlay.style.display = 'flex';
+  overlay.querySelector('.loading-text').textContent = 'Fetching schedule...';
+
+  try {
+    const games = await fetchSeasonGames(season);
+    const finished = games.filter(g => g.gameState === 'OFF' || g.gameState === 'FINAL');
+
+    if (finished.length === 0) {
+      overlay.querySelector('.loading-text').textContent = 'No completed games found.';
+      statusText.textContent = 'No data available for this season.';
+      return;
+    }
+
+    // Sample up to 30 games for performance
+    const sample = finished.slice(0, 30);
+    allShots = [];
+
+    for (let i = 0; i < sample.length; i++) {
+      overlay.querySelector('.loading-text').textContent =
+        `Loading game ${i+1} of ${sample.length}...`;
+      try {
+        const shots = await fetchGameShots(sample[i].id);
+        allShots.push(...shots);
+      } catch(e) { /* skip failed games */ }
+    }
+
+    overlay.style.display = 'none';
+    renderShots();
+
+  } catch (err) {
+    overlay.querySelector('.loading-text').innerHTML =
+      `<span style="color:var(--red)">Error: ${err.message}</span>`;
+    statusText.textContent = 'Failed to load data.';
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const svg = document.getElementById('rinkSVG');
+  drawRink(svg);
+
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentType = tab.dataset.type;
+      renderShots();
+    });
+  });
+
+  // Season change
+  document.getElementById('seasonSelect').addEventListener('change', (e) => {
+    loadData(e.target.value);
+  });
+
+  // Tooltip on shot dots
+  svg.addEventListener('mousemove', (e) => {
+    const tip = document.getElementById('tooltip');
+    const dot = e.target.closest('.shot-dot');
+    if (dot) {
+      const type = dot.dataset.type.replace(/-/g,' ').toUpperCase();
+      tip.textContent = type;
+      tip.style.display = 'block';
+      tip.style.left = e.clientX + 12 + 'px';
+      tip.style.top = e.clientY - 28 + 'px';
+    } else {
+      tip.style.display = 'none';
+    }
+  });
+
+  loadData('20242025');
+});
+</script>
+</body>
+</html>

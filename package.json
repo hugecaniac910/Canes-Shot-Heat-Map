@@ -1,0 +1,8 @@
+{
+  "name": "canes-shot-heatmap",
+  "version": "1.0.0",
+  "description": "Carolina Hurricanes Shot Heatmap with Vercel serverless NHL proxy",
+  "engines": {
+    "node": ">=18"
+  }
+}
