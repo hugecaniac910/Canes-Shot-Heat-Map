@@ -190,8 +190,8 @@ function drawRink(svg) {
     svg.appendChild(el('line',{x1:cx-2,y1:cy+45,x2:cx+2,y2:cy+45,stroke:'#E8272A','stroke-width':'2'}));
   });
 
-  // Neutral zone faceoff dots (5ft inside blue line, 20ft from boards)
-  [[210,61],[210,199],[390,61],[390,199]].forEach(([cx,cy])=>{
+  // Neutral zone faceoff dots (5ft inside each blue line toward center)
+  [[240,61],[240,199],[360,61],[360,199]].forEach(([cx,cy])=>{
     svg.appendChild(el('circle',{cx,cy,r:3,fill:'#E8272A'}));
   });
 
