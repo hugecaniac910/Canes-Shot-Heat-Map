@@ -107,6 +107,12 @@
 
   <div class="sidebar">
     <div class="sidebar-section">
+      <div class="sidebar-label">Player Filter</div>
+      <select id="playerSelect" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:1px;border-radius:3px;cursor:pointer;">
+        <option value="all">All Players</option>
+      </select>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-label">Season Summary</div>
       <div class="stat-grid">
         <div class="stat-card"><div class="val" id="statTotal">—</div><div class="lbl">Total Shots</div></div>
@@ -205,6 +211,29 @@ async function fetchSeasonGames(season) {
   return data.games || [];
 }
 
+async function loadRoster(season) {
+  try {
+    const data = await fetchNHL(`/v1/roster/CAR/${season}`);
+    const all = [
+      ...(data.forwards || []),
+      ...(data.defensemen || []),
+    ];
+    // Sort alphabetically by last name
+    all.sort((a, b) => a.lastName.default.localeCompare(b.lastName.default));
+
+    const sel = document.getElementById('playerSelect');
+    sel.innerHTML = '<option value="all">All Players</option>';
+    for (const p of all) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.firstName.default} ${p.lastName.default}`;
+      sel.appendChild(opt);
+    }
+  } catch(e) {
+    console.warn('Could not load roster:', e);
+  }
+}
+
 async function fetchGameShots(gameId) {
   let data;
   try { data = await fetchNHL(`/v1/gamecenter/${gameId}/play-by-play`); }
@@ -234,7 +263,7 @@ async function fetchGameShots(gameId) {
     const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
     if (sx < RINK_W / 2) continue;
 
-    shots.push({ x: sx, y: sy, type });
+    shots.push({ x: sx, y: sy, type, playerId: detail.shootingPlayerId || detail.scoringPlayerId });
   }
   return shots;
 }
@@ -343,10 +372,15 @@ function updateStats(shots) {
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderShots() {
   const svg = document.getElementById('rinkSVG');
+  const selectedPlayer = document.getElementById('playerSelect')?.value || 'all';
   let shots = allShots;
-  if (currentType==='SOG') shots = allShots.filter(s=>s.type==='shot-on-goal'||s.type==='goal');
-  else if (currentType==='GOAL') shots = allShots.filter(s=>s.type==='goal');
-  else if (currentType==='MISS') shots = allShots.filter(s=>s.type==='missed-shot'||s.type==='blocked-shot');
+  if (selectedPlayer !== 'all') {
+    const pid = parseInt(selectedPlayer);
+    shots = shots.filter(s => s.playerId === pid);
+  }
+  if (currentType==='SOG') shots = shots.filter(s=>s.type==='shot-on-goal'||s.type==='goal');
+  else if (currentType==='GOAL') shots = shots.filter(s=>s.type==='goal');
+  else if (currentType==='MISS') shots = shots.filter(s=>s.type==='missed-shot'||s.type==='blocked-shot');
   buildHeatmap(shots,svg); drawDots(shots,svg); updateStats(shots);
   document.getElementById('statusText').textContent = `${shots.length.toLocaleString()} shots plotted — ${allShots.length.toLocaleString()} total this season`;
 }
@@ -358,6 +392,9 @@ async function loadData(season) {
   overlay.style.display = 'flex';
   loadingText.textContent = 'Fetching schedule...';
   loadingText.style.color = '';
+
+  // Load roster for player filter
+  loadRoster(season);
 
   try {
     const games = await fetchSeasonGames(season);
@@ -401,6 +438,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('seasonSelect').addEventListener('change', e => loadData(e.target.value));
+  document.getElementById('playerSelect').addEventListener('change', () => renderShots());
 
   const svg = document.getElementById('rinkSVG');
   svg.addEventListener('mousemove', e => {

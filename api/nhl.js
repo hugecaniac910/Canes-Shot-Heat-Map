@@ -2,6 +2,7 @@
 const ALLOWED_PATHS = [
   /^\/v1\/club-schedule-season\/[A-Z]+\/\d{8}$/,
   /^\/v1\/gamecenter\/\d+\/play-by-play$/,
+  /^\/v1\/roster\/[A-Z]+\/\d{8}$/,
 ];
 
 const NHL_BASE = 'https://api-web.nhle.com';
@@ -31,16 +32,10 @@ module.exports = async function handler(req, res) {
         'Pragma': 'no-cache',
       },
     });
-
-    if (!nhlRes.ok) {
-      return res.status(nhlRes.status).json({ error: `NHL API returned ${nhlRes.status}` });
-    }
-
+    if (!nhlRes.ok) return res.status(nhlRes.status).json({ error: `NHL API returned ${nhlRes.status}` });
     const data = await nhlRes.json();
-    // Tell browser not to cache — always fetch fresh from our proxy
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json(data);
-
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
