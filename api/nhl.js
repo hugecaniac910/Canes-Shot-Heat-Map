@@ -1,7 +1,4 @@
 // api/nhl.js — Vercel Serverless Function
-// Proxies requests to the NHL Stats API, bypassing browser CORS restrictions.
-// Deploy to Vercel: https://vercel.com
-
 const ALLOWED_PATHS = [
   /^\/v1\/club-schedule-season\/[A-Z]+\/\d{8}$/,
   /^\/v1\/gamecenter\/\d+\/play-by-play$/,
@@ -9,29 +6,19 @@ const ALLOWED_PATHS = [
 
 const NHL_BASE = 'https://api-web.nhle.com';
 
-export default async function handler(req, res) {
-  // CORS headers — allow your GitHub Pages domain (or * for development)
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { path } = req.query;
+  const raw = req.query.path;
+  if (!raw) return res.status(400).json({ error: 'Missing path parameter' });
 
-  if (!path) {
-    return res.status(400).json({ error: 'Missing path parameter' });
-  }
-
-  // Security: only allow specific NHL API paths
-  const decodedPath = decodeURIComponent(path);
-  const isAllowed = ALLOWED_PATHS.some(pattern => pattern.test(decodedPath));
-
-  if (!isAllowed) {
-    return res.status(403).json({ error: 'Path not allowed' });
-  }
+  const decodedPath = decodeURIComponent(Array.isArray(raw) ? raw[0] : raw);
+  const isAllowed = ALLOWED_PATHS.some(p => p.test(decodedPath));
+  if (!isAllowed) return res.status(403).json({ error: 'Path not allowed: ' + decodedPath });
 
   const nhlUrl = `${NHL_BASE}${decodedPath}`;
 
@@ -40,8 +27,9 @@ export default async function handler(req, res) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; CanesShotHeatmap/1.0)',
         'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
       },
-      signal: AbortSignal.timeout(10000),
     });
 
     if (!nhlRes.ok) {
@@ -49,13 +37,11 @@ export default async function handler(req, res) {
     }
 
     const data = await nhlRes.json();
-
-    // Cache for 5 minutes (completed games don't change)
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
+    // Tell browser not to cache — always fetch fresh from our proxy
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json(data);
 
   } catch (err) {
-    console.error('NHL proxy error:', err);
-    return res.status(500).json({ error: 'Failed to fetch from NHL API', detail: err.message });
+    return res.status(500).json({ error: err.message });
   }
-}
+};
