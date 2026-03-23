@@ -311,7 +311,10 @@ async function fetchGameShots(gameId) {
 
     const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
     // Keep all shots for stat counting — only filter position for heatmap rendering
-    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2 });
+    const periodType = play.periodDescriptor?.periodType || 'REG';
+    // Exclude shootout goals — they don't count in official NHL stats
+    if (type === 'goal' && periodType === 'SO') continue;
+    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2, periodType });
   }
   return shots;
 }
