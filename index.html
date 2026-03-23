@@ -159,6 +159,7 @@ const RINK_W = 600, RINK_H = 260;
 const SCALE_X = RINK_W / 200;
 const SCALE_Y = RINK_H / 85;
 let allShots = [];
+window._debug = () => allShots; // expose for console debugging
 let currentType = 'all';
 let currentGameType = 2; // 2 = regular season, 3 = playoffs
 
