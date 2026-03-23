@@ -433,13 +433,19 @@ async function loadData(season) {
       return;
     }
 
-    const sample = finished.slice(0, 30);
     allShots = [];
+    const total = finished.length;
+    loadingText.textContent = `Loading all ${total} games in parallel...`;
 
-    for (let i = 0; i < sample.length; i++) {
-      loadingText.textContent = `Loading game ${i+1} of ${sample.length}...`;
-      const shots = await fetchGameShots(sample[i].id);
-      allShots.push(...shots);
+    // Fetch all games in parallel batches of 10 to avoid overwhelming the proxy
+    const BATCH = 10;
+    for (let i = 0; i < finished.length; i += BATCH) {
+      const batch = finished.slice(i, i + BATCH);
+      const batchNum = Math.floor(i / BATCH) + 1;
+      const totalBatches = Math.ceil(finished.length / BATCH);
+      loadingText.textContent = `Loading batch ${batchNum} of ${totalBatches} (${Math.min(i + BATCH, total)}/${total} games)...`;
+      const results = await Promise.all(batch.map(g => fetchGameShots(g.id)));
+      results.forEach(shots => allShots.push(...shots));
     }
 
     overlay.style.display = 'none';
