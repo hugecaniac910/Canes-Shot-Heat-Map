@@ -286,28 +286,31 @@ async function fetchGameShots(gameId) {
     if (!['shot-on-goal','goal','missed-shot','blocked-shot'].includes(type)) continue;
     const detail = play.details;
     if (!detail || detail.xCoord === undefined) continue;
-    if (detail.eventOwnerTeamId !== CANES_ID) continue;
 
-    // Use homeTeamDefendingSide directly — most reliable way to know attack direction
-    // If home team defends "right", they attack "left" (negative x), and vice versa
-    const defendingSide = play.homeTeamDefendingSide || 'left';
-    let attackRight;
-    if (canesHome) {
-      attackRight = defendingSide === 'left'; // home defends left = attacks right
-    } else {
-      attackRight = defendingSide === 'right'; // away attacks opposite of home defending
-    }
+    // eventOwnerTeamId can live on play.details OR play directly depending on event type
+    const ownerTeamId = detail.eventOwnerTeamId ?? play.details?.eventOwnerTeamId ?? null;
+    if (ownerTeamId !== CANES_ID) continue;
 
-    const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
-    if (sx < RINK_W / 2) continue;
-
-    // For goals use scoringPlayerId exclusively to avoid crediting the wrong player
-    // (e.g. original shooter on a deflection). For all other events use shootingPlayerId.
+    // For goals, double-check the scoring player actually exists
     const playerId = type === 'goal'
       ? detail.scoringPlayerId
       : detail.shootingPlayerId;
     if (!playerId) continue;
-    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType });
+
+    // Use homeTeamDefendingSide for attack direction — fallback to period-based logic
+    const defendingSide = play.homeTeamDefendingSide;
+    let attackRight;
+    if (defendingSide) {
+      attackRight = canesHome ? defendingSide === 'left' : defendingSide === 'right';
+    } else {
+      // Fallback: odd periods away team attacks right, even periods flip
+      const period = play.periodDescriptor?.number || 1;
+      attackRight = (period % 2 === 1) ? !canesHome : canesHome;
+    }
+
+    const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
+    // Keep all shots for stat counting — only filter position for heatmap rendering
+    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2 });
   }
   return shots;
 }
@@ -425,7 +428,8 @@ function renderShots() {
   if (currentType==='SOG') shots = shots.filter(s=>s.type==='shot-on-goal'||s.type==='goal');
   else if (currentType==='GOAL') shots = shots.filter(s=>s.type==='goal');
   else if (currentType==='MISS') shots = shots.filter(s=>s.type==='missed-shot'||s.type==='blocked-shot');
-  buildHeatmap(shots,svg); drawDots(shots,svg); updateStats(shots);
+  const heatmapShots = shots.filter(s => s.inOffZone);
+  buildHeatmap(heatmapShots,svg); drawDots(heatmapShots,svg); updateStats(shots);
   document.getElementById('statusText').textContent = `${shots.length.toLocaleString()} shots plotted — ${allShots.length.toLocaleString()} total this season`;
 }
 
