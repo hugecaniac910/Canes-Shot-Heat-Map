@@ -301,7 +301,13 @@ async function fetchGameShots(gameId) {
     const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
     if (sx < RINK_W / 2) continue;
 
-    shots.push({ x: sx, y: sy, type, playerId: detail.shootingPlayerId || detail.scoringPlayerId, gameType: data.gameType });
+    // For goals use scoringPlayerId exclusively to avoid crediting the wrong player
+    // (e.g. original shooter on a deflection). For all other events use shootingPlayerId.
+    const playerId = type === 'goal'
+      ? detail.scoringPlayerId
+      : detail.shootingPlayerId;
+    if (!playerId) continue;
+    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType });
   }
   return shots;
 }
