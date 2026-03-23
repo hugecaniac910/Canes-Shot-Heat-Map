@@ -447,7 +447,8 @@ async function loadData(season) {
 
   try {
     const games = await fetchSeasonGames(season);
-    const finished = games.filter(g=>g.gameState==='OFF'||g.gameState==='FINAL');
+    // gameType: 1=preseason, 2=regular season, 3=playoffs — exclude preseason
+    const finished = games.filter(g=>(g.gameState==='OFF'||g.gameState==='FINAL') && g.gameType !== 1);
 
     if (!finished.length) {
       loadingText.textContent = 'No completed games found.';
