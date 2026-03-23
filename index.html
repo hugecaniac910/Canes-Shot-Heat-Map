@@ -29,6 +29,10 @@
   .tab:last-child { border-right:none; }
   .tab:hover { background:var(--surface3); color:var(--text); }
   .tab.active { background:var(--red); color:white; font-weight:700; }
+  .gtype-tab { padding:7px 20px; font-family:'Barlow Condensed',sans-serif; font-size:12px; letter-spacing:2px; text-transform:uppercase; background:var(--surface); color:var(--text-dim); cursor:pointer; border:none; border-right:1px solid var(--border); transition:all 0.15s; }
+  .gtype-tab:last-child { border-right:none; }
+  .gtype-tab:hover { background:var(--surface3); color:var(--text); }
+  .gtype-tab.active { background:#333; color:white; font-weight:700; border-bottom:2px solid var(--red); }
   .rink-container { position:relative; width:100%; max-width:680px; }
   #rinkSVG { width:100%; border-radius:6px; filter:drop-shadow(0 0 40px rgba(204,0,0,0.15)); }
   .status-bar { margin-top:16px; display:flex; align-items:center; gap:20px; font-size:12px; color:var(--text-dim); letter-spacing:1px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; }
@@ -87,6 +91,10 @@
 
 <div class="main">
   <div class="rink-panel">
+    <div class="shot-type-tabs" style="margin-bottom:10px;">
+      <button class="gtype-tab active" data-gtype="2">Regular Season</button>
+      <button class="gtype-tab" data-gtype="3">Playoffs</button>
+    </div>
     <div class="shot-type-tabs">
       <button class="tab active" data-type="all">All Shots</button>
       <button class="tab" data-type="SOG">Shots on Goal</button>
@@ -152,6 +160,7 @@ const SCALE_X = RINK_W / 200;
 const SCALE_Y = RINK_H / 85;
 let allShots = [];
 let currentType = 'all';
+let currentGameType = 2; // 2 = regular season, 3 = playoffs
 
 // ── Rink ──────────────────────────────────────────────────────────────────────
 function drawRink(svg) {
@@ -292,7 +301,7 @@ async function fetchGameShots(gameId) {
     const [sx, sy] = toSVG(detail.xCoord, detail.yCoord, attackRight);
     if (sx < RINK_W / 2) continue;
 
-    shots.push({ x: sx, y: sy, type, playerId: detail.shootingPlayerId || detail.scoringPlayerId });
+    shots.push({ x: sx, y: sy, type, playerId: detail.shootingPlayerId || detail.scoringPlayerId, gameType: data.gameType });
   }
   return shots;
 }
@@ -402,7 +411,7 @@ function updateStats(shots) {
 function renderShots() {
   const svg = document.getElementById('rinkSVG');
   const selectedPlayer = document.getElementById('playerSelect')?.value || 'all';
-  let shots = allShots;
+  let shots = allShots.filter(s => s.gameType === currentGameType);
   if (selectedPlayer !== 'all') {
     const pid = parseInt(selectedPlayer);
     shots = shots.filter(s => s.playerId === pid);
@@ -473,6 +482,20 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('seasonSelect').addEventListener('change', e => loadData(e.target.value));
+
+  document.querySelectorAll('.gtype-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.gtype-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentGameType = parseInt(tab.dataset.gtype);
+      // Check if there are any playoff games, show message if not
+      const hasGames = allShots.some(s => s.gameType === currentGameType);
+      if (!hasGames && currentGameType === 3) {
+        document.getElementById('statusText').textContent = 'No playoff games found for this season yet.';
+      }
+      renderShots();
+    });
+  });
   document.getElementById('playerSelect').addEventListener('change', () => renderShots());
 
   const svg = document.getElementById('rinkSVG');
