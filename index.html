@@ -448,7 +448,15 @@ async function loadData(season) {
   try {
     const games = await fetchSeasonGames(season);
     // gameType: 1=preseason, 2=regular season, 3=playoffs — exclude preseason
-    const finished = games.filter(g=>(g.gameState==='OFF'||g.gameState==='FINAL') && g.gameType !== 1);
+    const finishedRaw = games.filter(g=>(g.gameState==='OFF'||g.gameState==='FINAL') && g.gameType !== 1);
+    // Deduplicate by game ID in case the schedule returns the same game twice
+    const seenIds = new Set();
+    const finished = finishedRaw.filter(g => {
+      if (seenIds.has(g.id)) return false;
+      seenIds.add(g.id);
+      return true;
+    });
+    console.log(`Schedule: ${finishedRaw.length} games raw, ${finished.length} after dedup`);
 
     if (!finished.length) {
       loadingText.textContent = 'No completed games found.';
