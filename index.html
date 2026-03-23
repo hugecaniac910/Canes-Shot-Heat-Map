@@ -325,14 +325,17 @@ async function fetchGameShots(gameId) {
     const periodType = play.periodDescriptor?.periodType || 'REG';
     // Exclude shootout goals — they don't count in official NHL stats
     if (type === 'goal' && periodType === 'SO') continue;
-    // situationCode: 1551=5v5, 1541=5v4(PP), 1451=4v5(PK), etc.
-    // First two digits = attacking team skaters, last two = defending team skaters
-    const sitCode = detail.situationCode || play.situationCode || '1551';
-    const atkSkaters = parseInt(sitCode.substring(0, 2));
-    const defSkaters = parseInt(sitCode.substring(2, 4));
+    // situationCode format: XXYY where X=goalie, digits are individual chars
+    // digit[0]=away goalie, digit[1]=away skaters, digit[2]=home skaters, digit[3]=home goalie
+    // e.g. "1551"=5v5, "1541"=away PP, "1451"=home PP, "1531"=away 5v3
+    const sitCode = play.situationCode || '1551';
+    const awaySkaters = parseInt(sitCode[1]);
+    const homeSkaters = parseInt(sitCode[2]);
+    const canesSkaters = canesHome ? homeSkaters : awaySkaters;
+    const oppSkaters = canesHome ? awaySkaters : homeSkaters;
     let situation = 'ev';
-    if (atkSkaters > defSkaters) situation = 'pp';
-    else if (atkSkaters < defSkaters) situation = 'pk';
+    if (canesSkaters > oppSkaters) situation = 'pp';
+    else if (canesSkaters < oppSkaters) situation = 'pk';
     shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2, periodType, situation });
   }
   return shots;
