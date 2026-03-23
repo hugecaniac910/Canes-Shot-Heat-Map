@@ -33,6 +33,10 @@
   .gtype-tab:last-child { border-right:none; }
   .gtype-tab:hover { background:var(--surface3); color:var(--text); }
   .gtype-tab.active { background:#333; color:white; font-weight:700; border-bottom:2px solid var(--red); }
+  .sit-tab { padding:7px 20px; font-family:'Barlow Condensed',sans-serif; font-size:12px; letter-spacing:2px; text-transform:uppercase; background:var(--surface); color:var(--text-dim); cursor:pointer; border:none; border-right:1px solid var(--border); transition:all 0.15s; }
+  .sit-tab:last-child { border-right:none; }
+  .sit-tab:hover { background:var(--surface3); color:var(--text); }
+  .sit-tab.active { background:#1a3a1a; color:#4CAF50; font-weight:700; border-bottom:2px solid #4CAF50; }
   .rink-container { position:relative; width:100%; max-width:680px; }
   #rinkSVG { width:100%; border-radius:6px; filter:drop-shadow(0 0 40px rgba(204,0,0,0.15)); }
   .status-bar { margin-top:16px; display:flex; align-items:center; gap:20px; font-size:12px; color:var(--text-dim); letter-spacing:1px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; }
@@ -94,6 +98,12 @@
     <div class="shot-type-tabs" style="margin-bottom:10px;">
       <button class="gtype-tab active" data-gtype="2">Regular Season</button>
       <button class="gtype-tab" data-gtype="3">Playoffs</button>
+    </div>
+    <div class="shot-type-tabs" style="margin-bottom:10px;">
+      <button class="sit-tab active" data-sit="all">All Situations</button>
+      <button class="sit-tab" data-sit="pp">Power Play</button>
+      <button class="sit-tab" data-sit="ev">Even Strength</button>
+      <button class="sit-tab" data-sit="pk">Penalty Kill</button>
     </div>
     <div class="shot-type-tabs">
       <button class="tab active" data-type="all">All Shots</button>
@@ -162,6 +172,7 @@ let allShots = [];
 window._debug = () => allShots; // expose for console debugging
 let currentType = 'all';
 let currentGameType = 2; // 2 = regular season, 3 = playoffs
+let currentSituation = 'all'; // all, pp, ev, pk
 
 // ── Rink ──────────────────────────────────────────────────────────────────────
 function drawRink(svg) {
@@ -314,7 +325,15 @@ async function fetchGameShots(gameId) {
     const periodType = play.periodDescriptor?.periodType || 'REG';
     // Exclude shootout goals — they don't count in official NHL stats
     if (type === 'goal' && periodType === 'SO') continue;
-    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2, periodType });
+    // situationCode: 1551=5v5, 1541=5v4(PP), 1451=4v5(PK), etc.
+    // First two digits = attacking team skaters, last two = defending team skaters
+    const sitCode = detail.situationCode || play.situationCode || '1551';
+    const atkSkaters = parseInt(sitCode.substring(0, 2));
+    const defSkaters = parseInt(sitCode.substring(2, 4));
+    let situation = 'ev';
+    if (atkSkaters > defSkaters) situation = 'pp';
+    else if (atkSkaters < defSkaters) situation = 'pk';
+    shots.push({ x: sx, y: sy, type, playerId, gameType: data.gameType, inOffZone: sx >= RINK_W / 2, periodType, situation });
   }
   return shots;
 }
@@ -425,6 +444,9 @@ function renderShots() {
   const svg = document.getElementById('rinkSVG');
   const selectedPlayer = document.getElementById('playerSelect')?.value || 'all';
   let shots = allShots.filter(s => s.gameType === currentGameType);
+  if (currentSituation !== 'all') {
+    shots = shots.filter(s => s.situation === currentSituation);
+  }
   if (selectedPlayer !== 'all') {
     const pid = parseInt(selectedPlayer);
     shots = shots.filter(s => s.playerId === pid);
@@ -520,6 +542,15 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
   document.getElementById('playerSelect').addEventListener('change', () => renderShots());
+
+  document.querySelectorAll('.sit-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sit-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentSituation = tab.dataset.sit;
+      renderShots();
+    });
+  });
 
   const svg = document.getElementById('rinkSVG');
   svg.addEventListener('mousemove', e => {
